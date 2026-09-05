@@ -8,7 +8,8 @@ void main() {
 
     expect(find.text('Huawei Exporter'), findsOneWidget);
     expect(find.text('Import Huawei Health Data'), findsOneWidget);
-    expect(find.text('Browse ZIP or JSON File'), findsOneWidget);
+    expect(find.text('1. Sync directly with Huawei ID (Instant)'), findsOneWidget);
+    expect(find.text('2. Browse Export ZIP or JSON File'), findsOneWidget);
     expect(find.text('Try with Demo Workouts'), findsOneWidget);
   });
 }

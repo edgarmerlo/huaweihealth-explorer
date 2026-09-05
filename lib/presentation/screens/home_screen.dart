@@ -6,9 +6,20 @@ import '../controllers/workout_provider.dart';
 import '../widgets/workout_card.dart';
 import '../widgets/strava_auth_dialog.dart';
 import 'activity_detail_screen.dart';
+import 'huawei_login_screen.dart';
 
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
+
+  Future<void> _loginHuaweiCloud(BuildContext context, WorkoutProvider provider) async {
+    final success = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(builder: (_) => const HuaweiLoginScreen()),
+    );
+    if (success == true) {
+      await provider.syncFromHuaweiCloud();
+    }
+  }
 
   void _showStravaDialog(BuildContext context, WorkoutProvider provider) {
     showDialog(
@@ -80,36 +91,64 @@ class HomeScreen extends StatelessWidget {
           ],
         ),
         actions: [
-          // Strava Status Button
-          TextButton.icon(
-            style: TextButton.styleFrom(
-              foregroundColor: provider.isStravaConnected ? const Color(0xFFFC4C02) : Colors.grey,
+          // Huawei Cloud Action
+          IconButton(
+            tooltip: provider.isHuaweiCloudConnected ? 'Huawei Cloud (Connected)' : 'Connect Huawei ID',
+            icon: Icon(
+              Icons.cloud_sync_rounded,
+              color: provider.isHuaweiCloudConnected ? Colors.redAccent : null,
             ),
+            onPressed: provider.isLoading || provider.isSyncing 
+                ? null 
+                : () => provider.isHuaweiCloudConnected 
+                    ? provider.syncFromHuaweiCloud() 
+                    : _loginHuaweiCloud(context, provider),
+          ),
+          // Strava Status Action
+          IconButton(
+            tooltip: provider.isStravaConnected ? 'Strava Connected' : 'Connect Strava',
             icon: Icon(
               Icons.cloud_done_rounded,
-              size: 20,
-              color: provider.isStravaConnected ? const Color(0xFFFC4C02) : Colors.grey,
-            ),
-            label: Text(
-              provider.isStravaConnected 
-                  ? (provider.stravaAthleteName != null ? provider.stravaAthleteName!.split(' ').first : 'Strava')
-                  : 'Connect Strava',
-              style: const TextStyle(fontWeight: FontWeight.bold),
+              color: provider.isStravaConnected ? const Color(0xFFFC4C02) : null,
             ),
             onPressed: () => _showStravaDialog(context, provider),
           ),
-          if (provider.activities.isEmpty)
-            IconButton(
-              icon: const Icon(Icons.science_outlined),
-              tooltip: 'Load Demo Data',
-              onPressed: () => provider.loadSampleData(),
-            ),
-          if (provider.activities.isNotEmpty)
-            IconButton(
-              icon: const Icon(Icons.file_upload_outlined),
-              tooltip: 'Import Another File',
-              onPressed: provider.isLoading || provider.isSyncing ? null : () => provider.pickAndImportFile(),
-            ),
+          PopupMenuButton<String>(
+            icon: const Icon(Icons.more_vert_rounded),
+            onSelected: (val) {
+              if (val == 'import') {
+                provider.pickAndImportFile();
+              } else if (val == 'demo') {
+                provider.loadSampleData();
+              } else if (val == 'huawei_login') {
+                _loginHuaweiCloud(context, provider);
+              } else if (val == 'strava_login') {
+                _showStravaDialog(context, provider);
+              }
+            },
+            itemBuilder: (ctx) => [
+              const PopupMenuItem(
+                value: 'import',
+                child: Row(
+                  children: [
+                    Icon(Icons.file_open_rounded, size: 20),
+                    SizedBox(width: 8),
+                    Text('Import ZIP / JSON File'),
+                  ],
+                ),
+              ),
+              const PopupMenuItem(
+                value: 'demo',
+                child: Row(
+                  children: [
+                    Icon(Icons.science_outlined, size: 20),
+                    SizedBox(width: 8),
+                    Text('Load Demo Workouts'),
+                  ],
+                ),
+              ),
+            ],
+          ),
         ],
       ),
       body: Stack(
@@ -224,21 +263,42 @@ class HomeScreen extends StatelessWidget {
                 ),
               ),
             ],
-            const SizedBox(height: 32),
-            ElevatedButton.icon(
-              style: ElevatedButton.styleFrom(
-                padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 16),
-                backgroundColor: theme.colorScheme.primary,
-                foregroundColor: theme.colorScheme.onPrimary,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            const SizedBox(height: 28),
+            // Primary Option: Direct Huawei Cloud Sync (No email wait)
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton.icon(
+                style: FilledButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+                  backgroundColor: Colors.redAccent.shade700,
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                ),
+                icon: const Icon(Icons.cloud_sync_rounded, size: 22),
+                label: const Text(
+                  '1. Sync directly with Huawei ID (Instant)',
+                  style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+                ),
+                onPressed: () => _loginHuaweiCloud(context, provider),
               ),
-              icon: const Icon(Icons.file_open_rounded),
-              label: const Text('Browse ZIP or JSON File', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-              onPressed: () => provider.pickAndImportFile(),
             ),
-            const SizedBox(height: 16),
-            OutlinedButton.icon(
-              icon: const Icon(Icons.science_rounded),
+            const SizedBox(height: 12),
+            // Secondary Option: Offline ZIP / JSON File
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                style: OutlinedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                ),
+                icon: const Icon(Icons.file_open_rounded),
+                label: const Text('2. Browse Export ZIP or JSON File'),
+                onPressed: () => provider.pickAndImportFile(),
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextButton.icon(
+              icon: const Icon(Icons.science_rounded, size: 18),
               label: const Text('Try with Demo Workouts'),
               onPressed: () => provider.loadSampleData(),
             ),

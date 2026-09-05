@@ -9,6 +9,7 @@ import '../../data/parsers/huawei_archive_parser.dart';
 import '../../data/services/export_service.dart';
 import '../../data/services/sync_storage_service.dart';
 import '../../data/services/strava_service.dart';
+import '../../data/services/huawei_cloud_service.dart';
 
 enum SyncFilterMode {
   all('All'),
@@ -22,6 +23,7 @@ enum SyncFilterMode {
 class WorkoutProvider extends ChangeNotifier {
   final SyncStorageService _syncStorage = SyncStorageService.instance;
   final StravaService _stravaService = StravaService.instance;
+  final HuaweiCloudService _huaweiCloud = HuaweiCloudService.instance;
 
   List<WorkoutActivity> _activities = [];
   final Set<String> _selectedIds = {};
@@ -41,6 +43,7 @@ class WorkoutProvider extends ChangeNotifier {
   Future<void> _initServices() async {
     await _syncStorage.init();
     await _stravaService.init();
+    await _huaweiCloud.init();
     notifyListeners();
   }
 
@@ -56,6 +59,7 @@ class WorkoutProvider extends ChangeNotifier {
   String? get lastLoadedFileName => _lastLoadedFileName;
   bool get isStravaConnected => _stravaService.isConnected;
   String? get stravaAthleteName => _stravaService.credentials?.athleteName;
+  bool get isHuaweiCloudConnected => _huaweiCloud.isConnected;
 
   void refresh() {
     notifyListeners();
@@ -177,6 +181,38 @@ class WorkoutProvider extends ChangeNotifier {
       notifyListeners();
       return false;
     }
+  }
+
+  /// Syncs activities directly from Huawei Cloud without waiting for Privacy export email
+  Future<bool> syncFromHuaweiCloud() async {
+    try {
+      _isLoading = true;
+      _errorMessage = null;
+      notifyListeners();
+
+      final fetched = await _huaweiCloud.fetchActivities();
+      if (fetched.isEmpty) {
+        _errorMessage = 'No workout activities found in your Huawei Health Cloud account.';
+      } else {
+        _activities = fetched;
+        _selectedIds.clear();
+        _lastLoadedFileName = 'Huawei Health Cloud';
+      }
+
+      _isLoading = false;
+      notifyListeners();
+      return fetched.isNotEmpty;
+    } catch (e) {
+      _isLoading = false;
+      _errorMessage = 'Cloud sync error: ${e.toString()}';
+      notifyListeners();
+      return false;
+    }
+  }
+
+  Future<void> logoutHuaweiCloud() async {
+    await _huaweiCloud.logout();
+    notifyListeners();
   }
 
   /// Syncs only new / modified activities directly to Strava
