@@ -6,20 +6,9 @@ import '../controllers/workout_provider.dart';
 import '../widgets/workout_card.dart';
 import '../widgets/strava_auth_dialog.dart';
 import 'activity_detail_screen.dart';
-import 'huawei_login_screen.dart';
 
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
-
-  Future<void> _loginHuaweiCloud(BuildContext context, WorkoutProvider provider) async {
-    final success = await Navigator.push<bool>(
-      context,
-      MaterialPageRoute(builder: (_) => const HuaweiLoginScreen()),
-    );
-    if (success == true) {
-      await provider.syncFromHuaweiCloud();
-    }
-  }
 
   void _showStravaDialog(BuildContext context, WorkoutProvider provider) {
     showDialog(
@@ -27,6 +16,135 @@ class HomeScreen extends StatelessWidget {
       builder: (_) => StravaAuthDialog(
         onConnectionChanged: () => provider.refresh(),
       ),
+    );
+  }
+
+  void _showBackupGuide(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (ctx) => DraggableScrollableSheet(
+        initialChildSize: 0.75,
+        maxChildSize: 0.9,
+        minChildSize: 0.5,
+        expand: false,
+        builder: (_, scrollController) => ListView(
+          controller: scrollController,
+          padding: const EdgeInsets.all(24),
+          children: [
+            Center(
+              child: Container(
+                width: 40,
+                height: 4,
+                margin: const EdgeInsets.only(bottom: 20),
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade300,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: Colors.deepOrange.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: const Icon(Icons.flash_on_rounded, color: Colors.deepOrange, size: 28),
+                ),
+                const SizedBox(width: 12),
+                const Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Instant Local Backup',
+                        style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                      ),
+                      Text(
+                        'Extract 100% past history in ~30 seconds',
+                        style: TextStyle(fontSize: 13, color: Colors.grey),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 24),
+            _buildGuideStep(
+              step: '1',
+              title: 'Open Huawei Backup App',
+              description: 'Open the native "Backup" (Copia de seguridad) app on your phone, or connect your phone to your computer with Huawei HiSuite.',
+            ),
+            const SizedBox(height: 16),
+            _buildGuideStep(
+              step: '2',
+              title: 'Choose Internal Storage or PC',
+              description: 'Tap Backup -> Select "Internal Storage" (Almacenamiento interno) or "External USB / PC".',
+            ),
+            const SizedBox(height: 16),
+            _buildGuideStep(
+              step: '3',
+              title: 'Select Huawei Health Data only',
+              description: 'Under the Apps list, select "Huawei Health" (Data only). Tap "Back Up".',
+            ),
+            const SizedBox(height: 16),
+            _buildGuideStep(
+              step: '4',
+              title: 'Pick File in this App',
+              description: 'Tap "Select Backup / ZIP" in this app and pick the created .tar / .zip archive from your storage.',
+            ),
+            const SizedBox(height: 24),
+            FilledButton.icon(
+              style: FilledButton.styleFrom(
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+              ),
+              icon: const Icon(Icons.file_open_rounded),
+              label: const Text('Browse Files Now'),
+              onPressed: () {
+                Navigator.pop(ctx);
+                context.read<WorkoutProvider>().pickAndImportFile();
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  static Widget _buildGuideStep({
+    required String step,
+    required String title,
+    required String description,
+  }) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        CircleAvatar(
+          radius: 14,
+          backgroundColor: Colors.deepOrange,
+          child: Text(
+            step,
+            style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.bold),
+          ),
+        ),
+        const SizedBox(width: 14),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+              const SizedBox(height: 4),
+              Text(description, style: TextStyle(fontSize: 13, color: Colors.grey.shade700, height: 1.3)),
+            ],
+          ),
+        ),
+      ],
     );
   }
 
@@ -91,18 +209,11 @@ class HomeScreen extends StatelessWidget {
           ],
         ),
         actions: [
-          // Huawei Cloud Action
+          // Backup Guide Action
           IconButton(
-            tooltip: provider.isHuaweiCloudConnected ? 'Huawei Cloud (Connected)' : 'Connect Huawei ID',
-            icon: Icon(
-              Icons.cloud_sync_rounded,
-              color: provider.isHuaweiCloudConnected ? Colors.redAccent : null,
-            ),
-            onPressed: provider.isLoading || provider.isSyncing 
-                ? null 
-                : () => provider.isHuaweiCloudConnected 
-                    ? provider.syncFromHuaweiCloud() 
-                    : _loginHuaweiCloud(context, provider),
+            tooltip: 'How to backup',
+            icon: const Icon(Icons.help_outline_rounded),
+            onPressed: () => _showBackupGuide(context),
           ),
           // Strava Status Action
           IconButton(
@@ -118,10 +229,10 @@ class HomeScreen extends StatelessWidget {
             onSelected: (val) {
               if (val == 'import') {
                 provider.pickAndImportFile();
+              } else if (val == 'guide') {
+                _showBackupGuide(context);
               } else if (val == 'demo') {
                 provider.loadSampleData();
-              } else if (val == 'huawei_login') {
-                _loginHuaweiCloud(context, provider);
               } else if (val == 'strava_login') {
                 _showStravaDialog(context, provider);
               }
@@ -133,7 +244,17 @@ class HomeScreen extends StatelessWidget {
                   children: [
                     Icon(Icons.file_open_rounded, size: 20),
                     SizedBox(width: 8),
-                    Text('Import ZIP / JSON File'),
+                    Text('Select Backup / ZIP File'),
+                  ],
+                ),
+              ),
+              const PopupMenuItem(
+                value: 'guide',
+                child: Row(
+                  children: [
+                    Icon(Icons.help_outline_rounded, size: 20),
+                    SizedBox(width: 8),
+                    Text('How to create Backup'),
                   ],
                 ),
               ),
@@ -160,7 +281,7 @@ class HomeScreen extends StatelessWidget {
                     children: [
                       CircularProgressIndicator(),
                       SizedBox(height: 16),
-                      Text('Parsing Huawei workout records...'),
+                      Text('Parsing Huawei backup & workout records...'),
                     ],
                   ),
                 )
@@ -237,13 +358,13 @@ class HomeScreen extends StatelessWidget {
             ),
             const SizedBox(height: 24),
             Text(
-              'Import Huawei Health Data',
+              'Import Huawei Workout Data',
               style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold),
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 12),
             Text(
-              'Select the .zip file from your Huawei Privacy Data export or motion path detail data.json',
+              'Select a Huawei Local Backup (.tar / .zip) or Huawei Privacy Data ZIP file',
               style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant),
               textAlign: TextAlign.center,
             ),
@@ -264,26 +385,26 @@ class HomeScreen extends StatelessWidget {
               ),
             ],
             const SizedBox(height: 28),
-            // Primary Option: Direct Huawei Cloud Sync (No email wait)
+            // Primary Option: Pick Backup / ZIP File
             SizedBox(
               width: double.infinity,
               child: FilledButton.icon(
                 style: FilledButton.styleFrom(
                   padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-                  backgroundColor: Colors.redAccent.shade700,
+                  backgroundColor: Colors.deepOrange,
                   foregroundColor: Colors.white,
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                 ),
-                icon: const Icon(Icons.cloud_sync_rounded, size: 22),
+                icon: const Icon(Icons.file_open_rounded, size: 22),
                 label: const Text(
-                  '1. Sync directly with Huawei ID (Instant)',
+                  'Select Backup / ZIP / JSON File',
                   style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
                 ),
-                onPressed: () => _loginHuaweiCloud(context, provider),
+                onPressed: () => provider.pickAndImportFile(),
               ),
             ),
             const SizedBox(height: 12),
-            // Secondary Option: Offline ZIP / JSON File
+            // Secondary Option: Backup Guide
             SizedBox(
               width: double.infinity,
               child: OutlinedButton.icon(
@@ -291,9 +412,9 @@ class HomeScreen extends StatelessWidget {
                   padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                 ),
-                icon: const Icon(Icons.file_open_rounded),
-                label: const Text('2. Browse Export ZIP or JSON File'),
-                onPressed: () => provider.pickAndImportFile(),
+                icon: const Icon(Icons.flash_on_rounded, color: Colors.deepOrange),
+                label: const Text('How to create Instant Local Backup (30s)'),
+                onPressed: () => _showBackupGuide(context),
               ),
             ),
             const SizedBox(height: 12),

@@ -1,6 +1,8 @@
+import 'dart:typed_data';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:huawei_health_export/domain/models/activity_type.dart';
 import 'package:huawei_health_export/data/parsers/motion_path_parser.dart';
+import 'package:huawei_health_export/data/parsers/huawei_archive_parser.dart';
 import 'package:huawei_health_export/data/generators/gpx_generator.dart';
 import 'package:huawei_health_export/data/generators/tcx_generator.dart';
 import 'package:huawei_health_export/data/generators/fit_generator.dart';
@@ -154,4 +156,14 @@ void main() {
       expect(String.fromCharCodes(fitBytes.sublist(8, 12)), '.FIT');
     });
   });
+
+  group('Archive and Local Backup Tests', () {
+    test('HuaweiArchiveParser parses raw JSON and ZIP archives', () {
+      final sampleJson = '[{"recordId":"123","sportType":283,"startTime":1693849200000,"endTime":1693851000000,"totalDistance":5000.0,"pointList":[{"lat":37.77,"lon":-122.41,"t":1693849200000}]}]';
+      final parsed = HuaweiArchiveParser.parseBytes(Uint8List.fromList(sampleJson.codeUnits), fileName: 'data.json');
+      expect(parsed.length, 1);
+      expect(parsed.first.distanceKm, 5.0);
+    });
+  });
 }
+

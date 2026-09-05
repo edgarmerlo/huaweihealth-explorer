@@ -6,7 +6,7 @@ import '../../domain/models/workout_activity.dart';
 import 'motion_path_parser.dart';
 
 class HuaweiArchiveParser {
-  /// Parses a file path (either a .zip archive or a direct .json file)
+  /// Parses a file path (either a .zip, .tar, .tar.gz, .tgz, or .json file)
   static Future<List<WorkoutActivity>> parseFile(String filePath) async {
     final file = File(filePath);
     if (!await file.exists()) {
@@ -16,58 +16,59 @@ class HuaweiArchiveParser {
     final bytes = await file.readAsBytes();
     final fileName = file.uri.pathSegments.last.toLowerCase();
 
-    if (fileName.endsWith('.zip')) {
-      return parseZipBytes(bytes, archiveName: fileName);
-    } else if (fileName.endsWith('.json')) {
-      final jsonString = utf8.decode(bytes);
-      return MotionPathParser.parseJsonContent(jsonString, sourceFileName: fileName);
-    } else {
-      // Try to parse as zip first, fallback to JSON
-      try {
-        return parseZipBytes(bytes, archiveName: fileName);
-      } catch (_) {
-        final jsonString = utf8.decode(bytes);
-        return MotionPathParser.parseJsonContent(jsonString, sourceFileName: fileName);
-      }
-    }
+    return parseBytes(bytes, fileName: fileName);
   }
 
-  /// Parses in-memory ZIP bytes
-  static List<WorkoutActivity> parseZipBytes(Uint8List bytes, {String? archiveName}) {
-    final archive = ZipDecoder().decodeBytes(bytes);
+  /// Parses in-memory archive or JSON bytes
+  static List<WorkoutActivity> parseBytes(Uint8List bytes, {String? fileName}) {
+    final lowerName = fileName?.toLowerCase() ?? '';
+
+    // Direct JSON file
+    if (lowerName.endsWith('.json')) {
+      final jsonString = utf8.decode(bytes, allowMalformed: true);
+      return MotionPathParser.parseJsonContent(jsonString, sourceFileName: fileName);
+    }
+
     final List<WorkoutActivity> allActivities = [];
 
-    for (final file in archive.files) {
-      if (file.isFile) {
-        final name = file.name.toLowerCase();
-        // Look for motion path detail files or JSON files containing workout data
-        if (name.endsWith('.json') && 
-            (name.contains('motion') || name.contains('path') || name.contains('detail') || name.contains('track') || name.contains('sport'))) {
-          try {
-            final content = utf8.decode(file.content as List<int>);
-            final activities = MotionPathParser.parseJsonContent(content, sourceFileName: file.name);
-            allActivities.addAll(activities);
-          } catch (_) {
-            // Ignore corrupted inner files and continue
-          }
-        }
-      }
+    // 1. Try ZIP decoder
+    try {
+      final zipArchive = ZipDecoder().decodeBytes(bytes, verify: false);
+      final zipActivities = _extractFromArchive(zipArchive);
+      allActivities.addAll(zipActivities);
+    } catch (_) {
+      // Not a ZIP archive
     }
 
-    // If no specific motion files were found, try any JSON file in the archive
+    // 2. Try TAR / TAR.GZ decoder (Huawei Local Backup / HiSuite format)
     if (allActivities.isEmpty) {
-      for (final file in archive.files) {
-        if (file.isFile && file.name.toLowerCase().endsWith('.json')) {
-          try {
-            final content = utf8.decode(file.content as List<int>);
-            final activities = MotionPathParser.parseJsonContent(content, sourceFileName: file.name);
-            allActivities.addAll(activities);
-          } catch (_) {}
+      try {
+        Uint8List tarBytes = bytes;
+        // Check for GZip header magic bytes (0x1F, 0x8B)
+        if (bytes.length > 2 && bytes[0] == 0x1f && bytes[1] == 0x8b) {
+          tarBytes = Uint8List.fromList(GZipDecoder().decodeBytes(bytes));
         }
+
+        final tarArchive = TarDecoder().decodeBytes(tarBytes);
+        final tarActivities = _extractFromArchive(tarArchive);
+        allActivities.addAll(tarActivities);
+      } catch (_) {
+        // Not a TAR archive
       }
     }
 
-    // Deduplicate activities by ID / timestamp
+    // 3. Fallback: try raw JSON string directly in case file has non-standard extension
+    if (allActivities.isEmpty) {
+      try {
+        final content = utf8.decode(bytes, allowMalformed: true);
+        if (content.trim().startsWith('{') || content.trim().startsWith('[')) {
+          final directActivities = MotionPathParser.parseJsonContent(content, sourceFileName: fileName);
+          allActivities.addAll(directActivities);
+        }
+      } catch (_) {}
+    }
+
+    // Deduplicate activities by sportType and timestamp
     final Map<String, WorkoutActivity> uniqueMap = {};
     for (final act in allActivities) {
       final key = '${act.sportType}_${act.startTime.millisecondsSinceEpoch}';
@@ -79,5 +80,56 @@ class HuaweiArchiveParser {
     final result = uniqueMap.values.toList();
     result.sort((a, b) => b.startTime.compareTo(a.startTime));
     return result;
+  }
+
+  /// Extracts workout records from an Archive (works for both Zip and Tar)
+  static List<WorkoutActivity> _extractFromArchive(Archive archive) {
+    final List<WorkoutActivity> activities = [];
+
+    for (final file in archive.files) {
+      if (!file.isFile) continue;
+      final name = file.name.toLowerCase();
+
+      // Check for nested .tar, .tar.gz, or .zip inside the backup
+      if (name.endsWith('.tar') || name.endsWith('.tar.gz') || name.endsWith('.tgz') || name.endsWith('.zip')) {
+        try {
+          final nestedBytes = Uint8List.fromList(file.content as List<int>);
+          final nested = parseBytes(nestedBytes, fileName: file.name);
+          activities.addAll(nested);
+          continue;
+        } catch (_) {}
+      }
+
+      // Check for motion path JSON files or files containing motion / health workout data
+      final isMotionFile = name.endsWith('.json') || 
+                           name.contains('motion_path') || 
+                           name.contains('motionpath') || 
+                           name.contains('sport_data') ||
+                           name.contains('track');
+
+      if (isMotionFile) {
+        try {
+          final content = utf8.decode(file.content as List<int>, allowMalformed: true);
+          final parsed = MotionPathParser.parseJsonContent(content, sourceFileName: file.name);
+          activities.addAll(parsed);
+        } catch (_) {}
+      }
+    }
+
+    // Fallback: If no motion-specific files found, inspect all other text/json files in archive
+    if (activities.isEmpty) {
+      for (final file in archive.files) {
+        if (!file.isFile) continue;
+        try {
+          final content = utf8.decode(file.content as List<int>, allowMalformed: true);
+          if (content.trim().startsWith('{') || content.trim().startsWith('[')) {
+            final parsed = MotionPathParser.parseJsonContent(content, sourceFileName: file.name);
+            activities.addAll(parsed);
+          }
+        } catch (_) {}
+      }
+    }
+
+    return activities;
   }
 }
