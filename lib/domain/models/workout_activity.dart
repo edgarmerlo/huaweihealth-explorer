@@ -110,6 +110,20 @@ class WorkoutActivity {
     return '${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
   }
 
+  /// Permanent entity identifier (guaranteed stable even across edits)
+  String get permanentId {
+    if (id.isNotEmpty && !id.contains('sample_')) return id;
+    return 'huawei_${startTime.toUtc().millisecondsSinceEpoch}';
+  }
+
+  /// Content version hash to detect when an activity has been edited/recalibrated in Huawei Health
+  String get contentHash {
+    return '${sportType.name}_${startTime.toUtc().millisecondsSinceEpoch}_${totalDistanceMeters.round()}_${totalDurationSeconds}_${totalCalories}_${trackPoints.length}_${avgHeartRate ?? 0}';
+  }
+
+  /// Unique external file name used for Strava cloud tagging (e.g. huawei_1693849200000.fit)
+  String get externalFileName => '$permanentId.fit';
+
   /// Formatted distance e.g. "5.42 km"
   String get formattedDistance {
     return '${distanceKm.toStringAsFixed(2)} km';

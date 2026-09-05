@@ -4,10 +4,67 @@ import '../../domain/models/activity_type.dart';
 import '../../data/services/export_service.dart';
 import '../controllers/workout_provider.dart';
 import '../widgets/workout_card.dart';
+import '../widgets/strava_auth_dialog.dart';
 import 'activity_detail_screen.dart';
 
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
+
+  void _showStravaDialog(BuildContext context, WorkoutProvider provider) {
+    showDialog(
+      context: context,
+      builder: (_) => StravaAuthDialog(
+        onConnectionChanged: () => provider.refresh(),
+      ),
+    );
+  }
+
+  Future<void> _startStravaSync(BuildContext context, WorkoutProvider provider) async {
+    if (!provider.isStravaConnected) {
+      _showStravaDialog(context, provider);
+      return;
+    }
+
+    final toSyncCount = provider.unsyncedCount;
+    if (toSyncCount == 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('All activities are already synced with Strava!')),
+      );
+      return;
+    }
+
+    try {
+      final results = await provider.syncNewToStrava();
+      if (context.mounted) {
+        showDialog(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            title: const Row(
+              children: [
+                Icon(Icons.check_circle_rounded, color: Colors.green),
+                SizedBox(width: 8),
+                Text('Sync Completed'),
+              ],
+            ),
+            content: Text(
+              'Successfully synced ${results['success']} new activities.\n'
+              '${results['duplicates']! > 0 ? "Skipped ${results['duplicates']} duplicates.\n" : ""}'
+              '${results['failed']! > 0 ? "Failed to upload ${results['failed']} activities." : ""}',
+            ),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('OK')),
+            ],
+          ),
+        );
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Sync error: $e'), backgroundColor: Colors.red),
+        );
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -23,34 +80,94 @@ class HomeScreen extends StatelessWidget {
           ],
         ),
         actions: [
+          // Strava Status Button
+          TextButton.icon(
+            style: TextButton.styleFrom(
+              foregroundColor: provider.isStravaConnected ? const Color(0xFFFC4C02) : Colors.grey,
+            ),
+            icon: Icon(
+              Icons.cloud_done_rounded,
+              size: 20,
+              color: provider.isStravaConnected ? const Color(0xFFFC4C02) : Colors.grey,
+            ),
+            label: Text(
+              provider.isStravaConnected 
+                  ? (provider.stravaAthleteName != null ? provider.stravaAthleteName!.split(' ').first : 'Strava')
+                  : 'Connect Strava',
+              style: const TextStyle(fontWeight: FontWeight.bold),
+            ),
+            onPressed: () => _showStravaDialog(context, provider),
+          ),
           if (provider.activities.isEmpty)
-            TextButton.icon(
-              icon: const Icon(Icons.science_outlined, size: 18),
-              label: const Text('Load Demo'),
+            IconButton(
+              icon: const Icon(Icons.science_outlined),
+              tooltip: 'Load Demo Data',
               onPressed: () => provider.loadSampleData(),
             ),
           if (provider.activities.isNotEmpty)
             IconButton(
               icon: const Icon(Icons.file_upload_outlined),
               tooltip: 'Import Another File',
-              onPressed: provider.isLoading ? null : () => provider.pickAndImportFile(),
+              onPressed: provider.isLoading || provider.isSyncing ? null : () => provider.pickAndImportFile(),
             ),
         ],
       ),
-      body: provider.isLoading
-          ? const Center(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  CircularProgressIndicator(),
-                  SizedBox(height: 16),
-                  Text('Parsing Huawei workout records...'),
-                ],
+      body: Stack(
+        children: [
+          provider.isLoading
+              ? const Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      CircularProgressIndicator(),
+                      SizedBox(height: 16),
+                      Text('Parsing Huawei workout records...'),
+                    ],
+                  ),
+                )
+              : provider.activities.isEmpty
+                  ? _buildEmptyState(context, provider)
+                  : _buildLoadedState(context, provider),
+
+          // Syncing Progress Overlay
+          if (provider.isSyncing)
+            Container(
+              color: Colors.black54,
+              child: Center(
+                child: Card(
+                  margin: const EdgeInsets.all(32),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                  child: Padding(
+                    padding: const EdgeInsets.all(24),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const CircularProgressIndicator(color: Color(0xFFFC4C02)),
+                        const SizedBox(height: 16),
+                        Text(
+                          'Syncing with Strava...',
+                          style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          provider.syncProgressMessage ?? '',
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(fontSize: 13),
+                        ),
+                        const SizedBox(height: 12),
+                        LinearProgressIndicator(
+                          value: provider.syncProgressValue,
+                          backgroundColor: Colors.grey.shade200,
+                          color: const Color(0xFFFC4C02),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
               ),
-            )
-          : provider.activities.isEmpty
-              ? _buildEmptyState(context, provider)
-              : _buildLoadedState(context, provider),
+            ),
+        ],
+      ),
       bottomNavigationBar: provider.selectedIds.isNotEmpty
           ? _buildBatchExportBar(context, provider)
           : null,
@@ -136,35 +253,72 @@ class HomeScreen extends StatelessWidget {
 
     return Column(
       children: [
-        // Summary stats bar
+        // Summary stats banner + Sync New CTA
         _buildStatsBanner(context, provider),
 
         // Filter chips & Multi-select header
         Padding(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
-          child: Row(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+          child: Column(
             children: [
-              Expanded(
-                child: SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  child: Row(
-                    children: [
-                      _buildFilterChip(context, label: 'All (${provider.totalActivities})', isSelected: provider.selectedFilter == null, onSelected: () => provider.setFilter(null)),
-                      const SizedBox(width: 8),
-                      _buildFilterChip(context, label: 'Runs', isSelected: provider.selectedFilter == ActivityType.outdoorRunning, onSelected: () => provider.setFilter(ActivityType.outdoorRunning)),
-                      const SizedBox(width: 8),
-                      _buildFilterChip(context, label: 'Rides', isSelected: provider.selectedFilter == ActivityType.outdoorCycling, onSelected: () => provider.setFilter(ActivityType.outdoorCycling)),
-                      const SizedBox(width: 8),
-                      _buildFilterChip(context, label: 'Walks', isSelected: provider.selectedFilter == ActivityType.walking, onSelected: () => provider.setFilter(ActivityType.walking)),
-                    ],
+              // Row 1: Sync Status Filters (All, New, Synced) + Sync CTA
+              Row(
+                children: [
+                  Expanded(
+                    child: SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      child: Row(
+                        children: [
+                          _buildFilterChip(
+                            context,
+                            label: 'All (${provider.totalActivities})',
+                            isSelected: provider.syncFilter == SyncFilterMode.all,
+                            onSelected: () => provider.setSyncFilter(SyncFilterMode.all),
+                          ),
+                          const SizedBox(width: 8),
+                          _buildFilterChip(
+                            context,
+                            label: 'New (${provider.unsyncedCount})',
+                            isSelected: provider.syncFilter == SyncFilterMode.newOnly,
+                            badgeColor: Colors.green,
+                            onSelected: () => provider.setSyncFilter(SyncFilterMode.newOnly),
+                          ),
+                          const SizedBox(width: 8),
+                          _buildFilterChip(
+                            context,
+                            label: 'Synced (${provider.syncedCount})',
+                            isSelected: provider.syncFilter == SyncFilterMode.syncedOnly,
+                            badgeColor: const Color(0xFFFC4C02),
+                            onSelected: () => provider.setSyncFilter(SyncFilterMode.syncedOnly),
+                          ),
+                        ],
+                      ),
+                    ),
                   ),
-                ),
+                  TextButton(
+                    onPressed: provider.selectedIds.length == filtered.length
+                        ? () => provider.clearSelection()
+                        : () => provider.selectAll(),
+                    child: Text(provider.selectedIds.length == filtered.length ? 'Deselect' : 'Select All'),
+                  ),
+                ],
               ),
-              TextButton(
-                onPressed: provider.selectedIds.length == filtered.length
-                    ? () => provider.clearSelection()
-                    : () => provider.selectAll(),
-                child: Text(provider.selectedIds.length == filtered.length ? 'Deselect All' : 'Select All'),
+              const SizedBox(height: 4),
+
+              // Row 2: Sport Category Chips
+              SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Row(
+                  children: [
+                    _buildSportChip(context, label: 'All Sports', isSelected: provider.selectedSportFilter == null, onSelected: () => provider.setSportFilter(null)),
+                    const SizedBox(width: 6),
+                    _buildSportChip(context, label: 'Runs', isSelected: provider.selectedSportFilter == ActivityType.outdoorRunning, onSelected: () => provider.setSportFilter(ActivityType.outdoorRunning)),
+                    const SizedBox(width: 6),
+                    _buildSportChip(context, label: 'Rides', isSelected: provider.selectedSportFilter == ActivityType.outdoorCycling, onSelected: () => provider.setSportFilter(ActivityType.outdoorCycling)),
+                    const SizedBox(width: 6),
+                    _buildSportChip(context, label: 'Walks', isSelected: provider.selectedSportFilter == ActivityType.walking, onSelected: () => provider.setSportFilter(ActivityType.walking)),
+                  ],
+                ),
               ),
             ],
           ),
@@ -179,10 +333,12 @@ class HomeScreen extends StatelessWidget {
                   itemCount: filtered.length,
                   itemBuilder: (context, index) {
                     final activity = filtered[index];
+                    final syncStatus = provider.getSyncStatus(activity);
                     return WorkoutCard(
                       activity: activity,
-                      isSelected: provider.isSelected(activity.id),
-                      onSelectChanged: (_) => provider.toggleSelection(activity.id),
+                      syncStatus: syncStatus,
+                      isSelected: provider.isSelected(activity.permanentId),
+                      onSelectChanged: (_) => provider.toggleSelection(activity.permanentId),
                       onTap: () {
                         Navigator.push(
                           context,
@@ -202,6 +358,7 @@ class HomeScreen extends StatelessWidget {
   Widget _buildStatsBanner(BuildContext context, WorkoutProvider provider) {
     final theme = Theme.of(context);
     final hours = (provider.totalDurationMinutes / 60.0).toStringAsFixed(1);
+    final unsynced = provider.unsyncedCount;
 
     return Container(
       margin: const EdgeInsets.fromLTRB(16, 8, 16, 4),
@@ -210,14 +367,36 @@ class HomeScreen extends StatelessWidget {
         color: theme.colorScheme.surfaceContainerLow,
         borderRadius: BorderRadius.circular(16),
       ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceAround,
+      child: Column(
         children: [
-          _buildStatSummaryItem(context, '${provider.totalActivities}', 'Activities'),
-          Container(width: 1, height: 28, color: theme.colorScheme.outlineVariant),
-          _buildStatSummaryItem(context, '${provider.totalDistanceKm.toStringAsFixed(1)} km', 'Total Distance'),
-          Container(width: 1, height: 28, color: theme.colorScheme.outlineVariant),
-          _buildStatSummaryItem(context, '$hours hrs', 'Total Time'),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceAround,
+            children: [
+              _buildStatSummaryItem(context, '${provider.totalActivities}', 'Activities'),
+              Container(width: 1, height: 28, color: theme.colorScheme.outlineVariant),
+              _buildStatSummaryItem(context, '${provider.totalDistanceKm.toStringAsFixed(1)} km', 'Total Distance'),
+              Container(width: 1, height: 28, color: theme.colorScheme.outlineVariant),
+              _buildStatSummaryItem(context, '$hours hrs', 'Total Time'),
+            ],
+          ),
+          if (unsynced > 0) ...[
+            const SizedBox(height: 10),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton.icon(
+                style: FilledButton.styleFrom(
+                  backgroundColor: const Color(0xFFFC4C02),
+                  padding: const EdgeInsets.symmetric(vertical: 10),
+                ),
+                icon: const Icon(Icons.cloud_upload_rounded, size: 18),
+                label: Text(
+                  'Sync $unsynced New ${unsynced == 1 ? "Activity" : "Activities"} to Strava',
+                  style: const TextStyle(fontWeight: FontWeight.bold),
+                ),
+                onPressed: provider.isSyncing ? null : () => _startStravaSync(context, provider),
+              ),
+            ),
+          ],
         ],
       ),
     );
@@ -233,12 +412,34 @@ class HomeScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildFilterChip(BuildContext context, {required String label, required bool isSelected, required VoidCallback onSelected}) {
+  Widget _buildFilterChip(
+    BuildContext context, {
+    required String label,
+    required bool isSelected,
+    Color? badgeColor,
+    required VoidCallback onSelected,
+  }) {
     return ChoiceChip(
       label: Text(label),
       selected: isSelected,
+      selectedColor: badgeColor?.withValues(alpha: 0.2),
       onSelected: (_) => onSelected(),
       showCheckmark: false,
+    );
+  }
+
+  Widget _buildSportChip(
+    BuildContext context, {
+    required String label,
+    required bool isSelected,
+    required VoidCallback onSelected,
+  }) {
+    return FilterChip(
+      label: Text(label, style: const TextStyle(fontSize: 12)),
+      selected: isSelected,
+      onSelected: (_) => onSelected(),
+      showCheckmark: false,
+      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 0),
     );
   }
 

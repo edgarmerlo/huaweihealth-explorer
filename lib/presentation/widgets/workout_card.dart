@@ -2,9 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../../domain/models/activity_type.dart';
 import '../../domain/models/workout_activity.dart';
+import '../../data/models/sync_record.dart';
 
 class WorkoutCard extends StatelessWidget {
   final WorkoutActivity activity;
+  final SyncStatus syncStatus;
   final bool isSelected;
   final ValueChanged<bool?> onSelectChanged;
   final VoidCallback onTap;
@@ -12,6 +14,7 @@ class WorkoutCard extends StatelessWidget {
   const WorkoutCard({
     super.key,
     required this.activity,
+    required this.syncStatus,
     required this.isSelected,
     required this.onSelectChanged,
     required this.onTap,
@@ -43,7 +46,7 @@ class WorkoutCard extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Header Row: Icon + Title + Date + Menu/Checkbox
+              // Header Row: Icon + Title + Status Badge + Checkbox
               Row(
                 children: [
                   _buildSportIcon(activity.sportType, theme),
@@ -52,13 +55,21 @@ class WorkoutCard extends StatelessWidget {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(
-                          activity.title,
-                          style: theme.textTheme.titleMedium?.copyWith(
-                            fontWeight: FontWeight.bold,
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                activity.title,
+                                style: theme.textTheme.titleMedium?.copyWith(
+                                  fontWeight: FontWeight.bold,
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                            const SizedBox(width: 6),
+                            _buildSyncBadge(context, syncStatus),
+                          ],
                         ),
                         const SizedBox(height: 2),
                         Text(
@@ -116,6 +127,58 @@ class WorkoutCard extends StatelessWidget {
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _buildSyncBadge(BuildContext context, SyncStatus status) {
+    Color bg;
+    Color fg;
+    IconData icon;
+    String text;
+
+    switch (status) {
+      case SyncStatus.synced:
+      case SyncStatus.duplicate:
+        bg = const Color(0xFFFC4C02).withValues(alpha: 0.15);
+        fg = const Color(0xFFFC4C02);
+        icon = Icons.check_circle_rounded;
+        text = 'Strava';
+        break;
+      case SyncStatus.modified:
+        bg = Colors.amber.withValues(alpha: 0.2);
+        fg = Colors.orange.shade800;
+        icon = Icons.edit_note_rounded;
+        text = 'Modified';
+        break;
+      case SyncStatus.unsynced:
+        bg = Colors.green.withValues(alpha: 0.15);
+        fg = Colors.green.shade800;
+        icon = Icons.fiber_new_rounded;
+        text = 'New';
+        break;
+    }
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 12, color: fg),
+          const SizedBox(width: 3),
+          Text(
+            text,
+            style: TextStyle(
+              color: fg,
+              fontSize: 10.5,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        ],
       ),
     );
   }
