@@ -63,8 +63,25 @@ class MotionPathParser {
 
   static WorkoutActivity? _parseSingleActivity(Map<String, dynamic> map, {required int index, String? sourceFileName}) {
     try {
+      // 1. Extract HW_EXT_TRACK_SIMPLIFY if present in attribute
+      Map<String, dynamic>? simplifyMap;
+      final rawAttribute = map['attribute'];
+      if (rawAttribute is String && rawAttribute.contains('HW_EXT_TRACK_SIMPLIFY@is')) {
+        try {
+          final simplifyPart = rawAttribute.split('HW_EXT_TRACK_SIMPLIFY@is')[1].split('&&')[0];
+          simplifyMap = jsonDecode(simplifyPart) as Map<String, dynamic>?;
+        } catch (_) {}
+      }
+
       final sportTypeCode = map['sportType'] ?? map['sport_type'] ?? map['type'];
-      final sportType = ActivityType.fromHuaweiCode(sportTypeCode);
+      final simplifySportType = simplifyMap?['sportType'] ?? (simplifyMap?['wearSportData'] is Map ? simplifyMap!['wearSportData']['sportType'] : null);
+      final avgStepRate = _parseIntOrNull(simplifyMap?['avgStepRate']);
+
+      final sportType = ActivityType.fromHuaweiCode(
+        sportTypeCode,
+        simplifyCode: simplifySportType,
+        stepRate: avgStepRate,
+      );
 
       final startTime = _parseTimestamp(map['startTime'] ?? map['start_time'] ?? map['beginTime']) 
           ?? DateTime.now();
@@ -76,12 +93,22 @@ class MotionPathParser {
       final distanceMeters = _parseDistanceMeters(map);
       final calories = _parseInt(map['totalCalories'] ?? map['calorie'] ?? map['calories']);
 
-      // Parse Telemetry
+      // 2. Parse Telemetry
       final heartRateSamples = _parseHeartRateSamples(map);
       final cadenceSamples = _parseCadenceSamples(map);
       final altitudeMap = _parseAltitudeMap(map);
 
-      // Parse GPS Trackpoints
+      // If attribute contains HW_EXT_TRACK_DETAIL lines, merge telemetry
+      if (rawAttribute is String && rawAttribute.contains('tp=')) {
+        _mergeAttributeTelemetry(
+          rawAttribute,
+          heartRateSamples: heartRateSamples,
+          cadenceSamples: cadenceSamples,
+          altitudeMap: altitudeMap,
+        );
+      }
+
+      // 3. Parse GPS Trackpoints
       final trackPoints = _parseTrackPoints(
         map, 
         heartRateSamples: heartRateSamples, 
@@ -89,11 +116,15 @@ class MotionPathParser {
         altitudeMap: altitudeMap,
       );
 
-      // Calculate summary stats
-      final avgHr = _calculateAvgHr(heartRateSamples, trackPoints) ?? _parseIntOrNull(map['avgHeartRate'] ?? map['avg_hr']);
-      final maxHr = _calculateMaxHr(heartRateSamples, trackPoints) ?? _parseIntOrNull(map['maxHeartRate'] ?? map['max_hr']);
+      // 4. Calculate summary stats
+      final avgHr = _parseIntOrNull(simplifyMap?['avgHeartRate'] ?? map['avgHeartRate'] ?? map['avg_hr']) ??
+                    _calculateAvgHr(heartRateSamples, trackPoints);
+      final maxHr = _parseIntOrNull(simplifyMap?['maxHeartRate'] ?? map['maxHeartRate'] ?? map['max_hr']) ??
+                    _calculateMaxHr(heartRateSamples, trackPoints);
       
       final elevationStats = _calculateElevationGainLoss(trackPoints);
+      final totalAscent = elevationStats.$1 ?? _parseDoubleOrNull(simplifyMap?['creepingWave']);
+      final totalDescent = elevationStats.$2 ?? _parseDoubleOrNull(simplifyMap?['mTotalDescent']);
 
       final id = map['recordId']?.toString() ?? 
                  map['workoutId']?.toString() ?? 
@@ -112,8 +143,8 @@ class MotionPathParser {
         totalCalories: calories,
         avgHeartRate: avgHr,
         maxHeartRate: maxHr,
-        totalAscentMeters: elevationStats.$1,
-        totalDescentMeters: elevationStats.$2,
+        totalAscentMeters: totalAscent,
+        totalDescentMeters: totalDescent,
         trackPoints: trackPoints,
         heartRateSamples: heartRateSamples,
         cadenceSamples: cadenceSamples,
@@ -144,6 +175,14 @@ class MotionPathParser {
       final attr = map['attribute'];
       if (attr is Map) {
         rawLbs = attr['lbsDataMap'] ?? attr['pointList'];
+      } else if (attr is String && attr.contains('tp=lbs')) {
+        final lines = attr.split('\n');
+        for (final line in lines) {
+          if (line.contains('tp=lbs')) {
+            final pt = _parseLbsString(line);
+            if (pt != null) points.add(pt);
+          }
+        }
       }
     }
 
@@ -241,8 +280,10 @@ class MotionPathParser {
         cad = _findClosestCadence(epochSec, cadSamples);
       }
 
-      // Elevation fallback from altitude map
-      double? alt = current.elevation ?? altitudeMap[epochSec];
+      // Elevation fallback from altitude map if elevation is missing or 0.0
+      double? alt = (current.elevation != null && current.elevation! != 0.0)
+          ? current.elevation
+          : _findClosestAltitude(epochSec, altitudeMap);
 
       enriched.add(current.copyWith(
         elevation: alt,
@@ -253,6 +294,24 @@ class MotionPathParser {
     }
 
     return enriched;
+  }
+
+  static double? _findClosestAltitude(int epochSec, Map<int, double> altitudeMap) {
+    if (altitudeMap.isEmpty) return null;
+    if (altitudeMap.containsKey(epochSec)) return altitudeMap[epochSec];
+
+    double? bestAlt;
+    int minDiff = 10; // up to 10 seconds tolerance (Huawei samples every 5s)
+
+    for (final entry in altitudeMap.entries) {
+      final diff = (entry.key - epochSec).abs();
+      if (diff < minDiff) {
+        minDiff = diff;
+        bestAlt = entry.value;
+        if (diff == 0) break;
+      }
+    }
+    return bestAlt;
   }
 
   static List<HeartRateSample> _parseHeartRateSamples(Map<String, dynamic> map) {
@@ -557,9 +616,106 @@ class MotionPathParser {
     return r * c;
   }
 
+  static void _mergeAttributeTelemetry(
+    String attribute, {
+    required List<HeartRateSample> heartRateSamples,
+    required List<CadenceSample> cadenceSamples,
+    required Map<int, double> altitudeMap,
+  }) {
+    final lines = attribute.split('\n');
+    for (final rawLine in lines) {
+      final line = rawLine.trim();
+      if (line.isEmpty) continue;
+
+      if (line.contains('tp=h-r;')) {
+        final hr = _parseKeyValHr(line);
+        if (hr != null) heartRateSamples.add(hr);
+      } else if (line.contains('tp=s-r;')) {
+        final cad = _parseKeyValCadence(line);
+        if (cad != null) cadenceSamples.add(cad);
+      } else if (line.contains('tp=alti;')) {
+        final alti = _parseKeyValAlti(line);
+        if (alti != null) altitudeMap[alti.$1] = alti.$2;
+      }
+    }
+
+    heartRateSamples.sort((a, b) => a.timestamp.compareTo(b.timestamp));
+    cadenceSamples.sort((a, b) => a.timestamp.compareTo(b.timestamp));
+  }
+
+  static HeartRateSample? _parseKeyValHr(String line) {
+    try {
+      final parts = line.split(';');
+      dynamic kVal;
+      int? bpm;
+      for (final p in parts) {
+        final kv = p.split('=');
+        if (kv.length == 2) {
+          final k = kv[0].trim().toLowerCase();
+          final v = kv[1].trim();
+          if (k == 'k' || k == 't') kVal = v;
+          if (k == 'v' || k == 'hr') bpm = int.tryParse(v);
+        }
+      }
+      if (kVal != null && bpm != null && bpm > 30 && bpm < 240) {
+        final time = _parseTimestamp(kVal);
+        if (time != null) return HeartRateSample(timestamp: time, bpm: bpm);
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  static CadenceSample? _parseKeyValCadence(String line) {
+    try {
+      final parts = line.split(';');
+      dynamic kVal;
+      int? cad;
+      for (final p in parts) {
+        final kv = p.split('=');
+        if (kv.length == 2) {
+          final k = kv[0].trim().toLowerCase();
+          final v = kv[1].trim();
+          if (k == 'k' || k == 't') kVal = v;
+          if (k == 'v' || k == 'cadence' || k == 'steprate') cad = int.tryParse(v);
+        }
+      }
+      if (kVal != null && cad != null && cad >= 0) {
+        final time = _parseTimestamp(kVal);
+        if (time != null) return CadenceSample(timestamp: time, rpm: cad);
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  static (int, double)? _parseKeyValAlti(String line) {
+    try {
+      final parts = line.split(';');
+      dynamic kVal;
+      double? alt;
+      for (final p in parts) {
+        final kv = p.split('=');
+        if (kv.length == 2) {
+          final k = kv[0].trim().toLowerCase();
+          final v = kv[1].trim();
+          if (k == 'k' || k == 't') kVal = v;
+          if (k == 'v' || k == 'alt') alt = double.tryParse(v);
+        }
+      }
+      if (kVal != null && alt != null) {
+        final epoch = _parseEpochSeconds(kVal);
+        if (epoch != null) return (epoch, alt);
+      }
+    } catch (_) {}
+    return null;
+  }
+
   static String _sanitizeJsonString(String raw) {
-    // Trims and cleans whitespace
-    return raw.trim();
+    final trimmed = raw.trim();
+    // Fix unquoted decimal/integer keys in Huawei JSON: e.g. {1.0:461.0, 2: 123} -> {"1.0":461.0, "2": 123}
+    return trimmed.replaceAllMapped(
+      RegExp(r'([{,]\s*)([0-9]+(?:\.[0-9]+)?)\s*:'),
+      (m) => '${m.group(1)}"${m.group(2)}":',
+    );
   }
 
   static String _formatDateTimeTitle(DateTime dt) {

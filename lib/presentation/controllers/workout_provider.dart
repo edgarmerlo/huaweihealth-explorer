@@ -1,5 +1,7 @@
+import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:path_provider/path_provider.dart';
 import '../../domain/models/activity_type.dart';
 import '../../domain/models/workout_activity.dart';
 import '../../data/models/sync_record.dart';
@@ -7,6 +9,7 @@ import '../../data/parsers/huawei_archive_parser.dart';
 import '../../data/services/export_service.dart';
 import '../../data/services/sync_storage_service.dart';
 import '../../data/services/strava_service.dart';
+import '../../data/services/native_zip_service.dart';
 
 enum SyncFilterMode {
   all('All'),
@@ -26,6 +29,7 @@ class WorkoutProvider extends ChangeNotifier {
   ActivityType? _selectedSportFilter;
   SyncFilterMode _syncFilter = SyncFilterMode.all;
   bool _isLoading = false;
+  String? _loadingMessage;
   bool _isSyncing = false;
   String? _syncProgressMessage;
   double _syncProgressValue = 0.0;
@@ -47,6 +51,7 @@ class WorkoutProvider extends ChangeNotifier {
   ActivityType? get selectedSportFilter => _selectedSportFilter;
   SyncFilterMode get syncFilter => _syncFilter;
   bool get isLoading => _isLoading;
+  String? get loadingMessage => _loadingMessage;
   bool get isSyncing => _isSyncing;
   String? get syncProgressMessage => _syncProgressMessage;
   double get syncProgressValue => _syncProgressValue;
@@ -136,9 +141,12 @@ class WorkoutProvider extends ChangeNotifier {
   }
 
   /// Opens the system file picker to select a Huawei Privacy Export ZIP file
-  Future<bool> pickAndImportFile() async {
+  Future<bool> pickAndImportFile({
+    Future<String?> Function(String fileName, {bool isRetry})? onPasswordPrompt,
+  }) async {
     try {
       _isLoading = true;
+      _loadingMessage = 'Selecting Huawei ZIP file...';
       _errorMessage = null;
       notifyListeners();
 
@@ -150,27 +158,128 @@ class WorkoutProvider extends ChangeNotifier {
 
       if (result == null || result.files.isEmpty || result.files.first.path == null) {
         _isLoading = false;
+        _loadingMessage = null;
         notifyListeners();
         return false;
       }
 
       final filePath = result.files.first.path!;
-      _lastLoadedFileName = result.files.first.name;
+      final fileName = result.files.first.name;
+      _lastLoadedFileName = fileName;
 
-      final parsed = await HuaweiArchiveParser.parseFile(filePath);
-      
-      if (parsed.isEmpty) {
-        _errorMessage = 'No workout records found in "${result.files.first.name}". Make sure this is the Huawei Privacy Center export ZIP.';
+      // Check if ZIP archive is encrypted with password
+      final isEncrypted = await NativeZipService.isEncrypted(filePath);
+
+      final tempBase = await getTemporaryDirectory();
+      final extractDir = Directory('${tempBase.path}/huawei_unzip_${DateTime.now().millisecondsSinceEpoch}');
+
+      if (isEncrypted) {
+        String? password;
+        bool isRetry = false;
+
+        while (true) {
+          _isLoading = false;
+          _loadingMessage = null;
+          notifyListeners();
+
+          if (onPasswordPrompt != null) {
+            password = await onPasswordPrompt(fileName, isRetry: isRetry);
+            if (password == null) {
+              // User cancelled password prompt
+              _isLoading = false;
+              _loadingMessage = null;
+              notifyListeners();
+              return false;
+            }
+          }
+
+          _isLoading = true;
+          _loadingMessage = 'Unlocking and unzipping Huawei archive...';
+          notifyListeners();
+
+          if (await extractDir.exists()) {
+            try { await extractDir.delete(recursive: true); } catch (_) {}
+          }
+          await extractDir.create(recursive: true);
+
+          final res = await NativeZipService.extractZip(
+            zipPath: filePath,
+            destinationDir: extractDir.path,
+            password: password,
+          );
+
+          if (res.success) {
+            _loadingMessage = 'Parsing workout routes and telemetry...';
+            notifyListeners();
+
+            final parsed = await HuaweiArchiveParser.parseDirectory(extractDir);
+            try { await extractDir.delete(recursive: true); } catch (_) {}
+
+            if (parsed.isEmpty) {
+              _errorMessage = 'No workout tracks found in "$fileName". Make sure this is your Huawei Privacy Center export ZIP.';
+              _isLoading = false;
+              _loadingMessage = null;
+              notifyListeners();
+              return false;
+            }
+
+            _activities = parsed;
+            _selectedIds.clear();
+            _isLoading = false;
+            _loadingMessage = null;
+            notifyListeners();
+            return true;
+          } else if (res.isWrongPassword) {
+            try { await extractDir.delete(recursive: true); } catch (_) {}
+            isRetry = true;
+            continue;
+          } else {
+            try { await extractDir.delete(recursive: true); } catch (_) {}
+            _errorMessage = res.errorMessage ?? 'Failed to extract ZIP archive';
+            _isLoading = false;
+            _loadingMessage = null;
+            notifyListeners();
+            return false;
+          }
+        }
       } else {
-        _activities = parsed;
-        _selectedIds.clear();
-      }
+        // Not encrypted: extract and parse
+        _isLoading = true;
+        _loadingMessage = 'Extracting Huawei archive...';
+        notifyListeners();
 
-      _isLoading = false;
-      notifyListeners();
-      return parsed.isNotEmpty;
+        await extractDir.create(recursive: true);
+        final res = await NativeZipService.extractZip(
+          zipPath: filePath,
+          destinationDir: extractDir.path,
+        );
+
+        List<WorkoutActivity> parsed = [];
+        if (res.success) {
+          _loadingMessage = 'Parsing workout routes and telemetry...';
+          notifyListeners();
+          parsed = await HuaweiArchiveParser.parseDirectory(extractDir);
+          try { await extractDir.delete(recursive: true); } catch (_) {}
+        } else {
+          try { await extractDir.delete(recursive: true); } catch (_) {}
+          parsed = await HuaweiArchiveParser.parseFile(filePath);
+        }
+
+        if (parsed.isEmpty) {
+          _errorMessage = 'No workout records found in "$fileName". Make sure this is the Huawei Privacy Center export ZIP.';
+        } else {
+          _activities = parsed;
+          _selectedIds.clear();
+        }
+
+        _isLoading = false;
+        _loadingMessage = null;
+        notifyListeners();
+        return parsed.isNotEmpty;
+      }
     } catch (e) {
       _isLoading = false;
+      _loadingMessage = null;
       _errorMessage = 'Error reading ZIP archive: ${e.toString()}';
       notifyListeners();
       return false;

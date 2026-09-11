@@ -19,6 +19,154 @@ class HomeScreen extends StatelessWidget {
     );
   }
 
+  Future<String?> _showPasswordDialog(
+    BuildContext context,
+    String fileName, {
+    bool isRetry = false,
+  }) {
+    final controller = TextEditingController();
+    bool obscureText = true;
+
+    return showDialog<String>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setState) {
+          return AlertDialog(
+            backgroundColor: const Color(0xFF161B22),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(20),
+              side: const BorderSide(color: Color(0xFF30363D)),
+            ),
+            title: const Row(
+              children: [
+                Icon(Icons.lock_rounded, color: Color(0xFFFC4C02), size: 24),
+                SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    'Protected ZIP Archive',
+                    style: TextStyle(
+                      color: Color(0xFFF0F6FC),
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '"$fileName" is encrypted with a password.',
+                    style: const TextStyle(
+                      color: Color(0xFFF0F6FC),
+                      fontWeight: FontWeight.w600,
+                      fontSize: 14,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  const Text(
+                    'Huawei sends this password to your email address or SMS upon generating your data export.',
+                    style: TextStyle(color: Color(0xFF8B949E), fontSize: 13, height: 1.35),
+                  ),
+                  if (isRetry) ...[
+                    const SizedBox(height: 12),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: Colors.red.withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: Colors.redAccent.withValues(alpha: 0.5)),
+                      ),
+                      child: const Row(
+                        children: [
+                          Icon(Icons.error_outline_rounded, color: Colors.redAccent, size: 18),
+                          SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              'Incorrect password. Please verify and try again.',
+                              style: TextStyle(color: Colors.redAccent, fontSize: 12.5),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: controller,
+                    obscureText: obscureText,
+                    autofocus: true,
+                    style: const TextStyle(color: Color(0xFFF0F6FC), fontSize: 15),
+                    decoration: InputDecoration(
+                      labelText: 'ZIP Password',
+                      labelStyle: const TextStyle(color: Color(0xFF8B949E)),
+                      filled: true,
+                      fillColor: const Color(0xFF0B0E14),
+                      prefixIcon: const Icon(Icons.key_rounded, color: Color(0xFF00E5BE), size: 20),
+                      suffixIcon: IconButton(
+                        icon: Icon(
+                          obscureText ? Icons.visibility_off_rounded : Icons.visibility_rounded,
+                          color: const Color(0xFF8B949E),
+                          size: 20,
+                        ),
+                        onPressed: () => setState(() => obscureText = !obscureText),
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: const BorderSide(color: Color(0xFF30363D)),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: const BorderSide(color: Color(0xFF00E5BE), width: 1.5),
+                      ),
+                    ),
+                    onSubmitted: (val) {
+                      if (val.trim().isNotEmpty) {
+                        Navigator.pop(ctx, val.trim());
+                      }
+                    },
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, null),
+                child: const Text('Cancel', style: TextStyle(color: Color(0xFF8B949E))),
+              ),
+              FilledButton(
+                style: FilledButton.styleFrom(
+                  backgroundColor: const Color(0xFFFC4C02),
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                ),
+                onPressed: () {
+                  final pwd = controller.text.trim();
+                  if (pwd.isNotEmpty) {
+                    Navigator.pop(ctx, pwd);
+                  }
+                },
+                child: const Text('Unlock & Import', style: TextStyle(fontWeight: FontWeight.bold)),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  Future<void> _importZip(BuildContext context, WorkoutProvider provider) async {
+    await provider.pickAndImportFile(
+      onPasswordPrompt: (fileName, {bool isRetry = false}) async {
+        return await _showPasswordDialog(context, fileName, isRetry: isRetry);
+      },
+    );
+  }
+
   Future<void> _startStravaSync(BuildContext context, WorkoutProvider provider) async {
     if (!provider.isStravaConnected) {
       _showStravaDialog(context, provider);
@@ -100,7 +248,7 @@ class HomeScreen extends StatelessWidget {
             IconButton(
               tooltip: 'Select new ZIP file',
               icon: const Icon(Icons.folder_open_rounded),
-              onPressed: () => provider.pickAndImportFile(),
+              onPressed: () => _importZip(context, provider),
             ),
           // Strava Status / Connect Action
           IconButton(
@@ -116,15 +264,16 @@ class HomeScreen extends StatelessWidget {
       body: Stack(
         children: [
           provider.isLoading
-              ? const Center(
+              ? Center(
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      CircularProgressIndicator(color: Color(0xFFFC4C02)),
-                      SizedBox(height: 16),
+                      const CircularProgressIndicator(color: Color(0xFFFC4C02)),
+                      const SizedBox(height: 16),
                       Text(
-                        'Extracting workouts from Huawei ZIP...',
-                        style: TextStyle(color: Color(0xFF8B949E), fontSize: 14),
+                        provider.loadingMessage ?? 'Extracting workouts from Huawei ZIP...',
+                        style: const TextStyle(color: Color(0xFF8B949E), fontSize: 14),
+                        textAlign: TextAlign.center,
                       ),
                     ],
                   ),
@@ -270,7 +419,7 @@ class HomeScreen extends StatelessWidget {
                   'Select Huawei Data ZIP',
                   style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                 ),
-                onPressed: () => provider.pickAndImportFile(),
+                onPressed: () => _importZip(context, provider),
               ),
             ),
           ],

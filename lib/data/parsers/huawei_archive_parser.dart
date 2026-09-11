@@ -6,6 +6,63 @@ import '../../domain/models/workout_activity.dart';
 import 'motion_path_parser.dart';
 
 class HuaweiArchiveParser {
+  /// Parses an uncompressed directory recursively, finding and parsing all workout JSON files
+  static Future<List<WorkoutActivity>> parseDirectory(
+    Directory dir, {
+    void Function(int processedFiles, int totalFiles)? onProgress,
+  }) async {
+    final List<WorkoutActivity> allActivities = [];
+    if (!await dir.exists()) {
+      return allActivities;
+    }
+
+    final entities = dir.listSync(recursive: true);
+    final jsonFiles = entities.whereType<File>().where((f) {
+      final name = f.uri.pathSegments.last.toLowerCase();
+      return name.endsWith('.json') && (
+        name.contains('motion path') ||
+        name.contains('motion_path') ||
+        name.contains('sport_data') ||
+        name.contains('track') ||
+        name.contains('detail')
+      );
+    }).toList();
+
+    final targets = jsonFiles.isNotEmpty 
+        ? jsonFiles 
+        : entities.whereType<File>().where((f) => f.path.toLowerCase().endsWith('.json')).toList();
+
+    for (int i = 0; i < targets.length; i++) {
+      final file = targets[i];
+      try {
+        final content = await file.readAsString();
+        if (content.trim().isNotEmpty && content.trim() != '[]') {
+          final parsed = MotionPathParser.parseJsonContent(
+            content,
+            sourceFileName: file.uri.pathSegments.last,
+          );
+          allActivities.addAll(parsed);
+        }
+      } catch (_) {
+        // Skip unparseable files
+      }
+      onProgress?.call(i + 1, targets.length);
+    }
+
+    // Deduplicate activities by sportType and timestamp
+    final Map<String, WorkoutActivity> uniqueMap = {};
+    for (final act in allActivities) {
+      final key = '${act.sportType}_${act.startTime.millisecondsSinceEpoch}';
+      if (!uniqueMap.containsKey(key) || act.trackPoints.length > uniqueMap[key]!.trackPoints.length) {
+        uniqueMap[key] = act;
+      }
+    }
+
+    final result = uniqueMap.values.toList();
+    result.sort((a, b) => b.startTime.compareTo(a.startTime));
+    return result;
+  }
+
   /// Parses a file path (either a .zip, .tar, .tar.gz, .tgz, or .json file)
   static Future<List<WorkoutActivity>> parseFile(String filePath) async {
     final file = File(filePath);

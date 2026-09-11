@@ -69,40 +69,51 @@ enum ActivityType {
     }
   }
 
-  static ActivityType fromHuaweiCode(dynamic code) {
-    if (code == null) return ActivityType.other;
-    final intCode = code is int ? code : int.tryParse(code.toString()) ?? -1;
+  static ActivityType fromHuaweiCode(dynamic code, {dynamic simplifyCode, int? stepRate}) {
+    final specificCode = simplifyCode ?? code;
+    if (specificCode == null) return ActivityType.other;
+    final intCode = specificCode is int ? specificCode : int.tryParse(specificCode.toString()) ?? -1;
 
     switch (intCode) {
       case 1:
+      case 4: // Huawei Health motion path export: 4 is Outdoor Run
+      case 258:
       case 283:
         return ActivityType.outdoorRunning;
       case 2:
+      case 257:
       case 284:
         return ActivityType.indoorRunning;
       case 3:
+      case 5:
+      case 259:
       case 281:
       case 282:
         return ActivityType.walking;
-      case 4:
+      case 6:
+      case 260:
       case 285:
         return ActivityType.outdoorCycling;
-      case 5:
+      case 7:
+      case 261:
       case 288:
         return ActivityType.indoorCycling;
-      case 6:
+      case 8:
       case 286:
         return ActivityType.hiking;
-      case 7:
+      case 9:
       case 287:
         return ActivityType.trailRunning;
-      case 8:
+      case 10:
       case 289:
       case 290:
         return ActivityType.swimming;
-      case 9:
+      case 11:
+      case 111:
         return ActivityType.crossTrainer;
       default:
+        if (stepRate != null && stepRate > 130) return ActivityType.outdoorRunning;
+        if (stepRate != null && stepRate > 40) return ActivityType.walking;
         return ActivityType.other;
     }
   }

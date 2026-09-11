@@ -164,6 +164,38 @@ void main() {
       expect(parsed.length, 1);
       expect(parsed.first.distanceKm, 5.0);
     });
+
+    test('Huawei Privacy Center JSON format with unquoted numbers and attribute string telemetry', () {
+      const huaweiRawJson = '''
+      [
+        {
+          "recordId": "huawei_test_1",
+          "sportType": 4,
+          "startTime": 1615946404000,
+          "endTime": 1615948767000,
+          "totalTime": 2363000,
+          "totalDistance": 5280,
+          "totalCalories": 342000,
+          "partTimeMap": {1.0: 461.0, 2.0: 931.0},
+          "attribute": "HW_EXT_TRACK_DETAIL@istp=lbs;k=0;lat=19.3707;lon=-99.1552;alt=0.0;t=1.615946456E9;\\ntp=lbs;k=1;lat=19.3712;lon=-99.1558;alt=0.0;t=1.615946462E9;\\ntp=h-r;k=1615946460000;v=145;\\ntp=s-r;k=1615946460000;v=168;\\ntp=alti;k=1615946460000;v=2264.0;\\n&&HW_EXT_TRACK_SIMPLIFY@is{\\"avgHeartRate\\":155,\\"maxHeartRate\\":170,\\"avgStepRate\\":162,\\"creepingWave\\":166.0,\\"mTotalDescent\\":93.0}"
+        }
+      ]
+      ''';
+
+      final activities = MotionPathParser.parseJsonContent(huaweiRawJson, sourceFileName: 'motion_test.json');
+      expect(activities.length, 1);
+      final act = activities.first;
+      expect(act.sportType, ActivityType.outdoorRunning);
+      expect(act.distanceKm, closeTo(5.28, 0.01));
+      expect(act.trackPoints.length, 2);
+      expect(act.avgHeartRate, 155);
+      expect(act.maxHeartRate, 170);
+      // Elevation from tp=alti should be applied when GPS alt is 0
+      expect(act.trackPoints.first.elevation, 2264.0);
+      // Heart rate and cadence enrichment
+      expect(act.trackPoints.first.heartRate, 145);
+      expect(act.trackPoints.first.cadence, 168);
+    });
   });
 }
 
