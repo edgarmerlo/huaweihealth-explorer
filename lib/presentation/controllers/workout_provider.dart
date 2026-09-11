@@ -1,10 +1,8 @@
 import 'package:flutter/foundation.dart';
 import 'package:file_picker/file_picker.dart';
 import '../../domain/models/activity_type.dart';
-import '../../domain/models/track_point.dart';
 import '../../domain/models/workout_activity.dart';
 import '../../data/models/sync_record.dart';
-import '../../data/parsers/motion_path_parser.dart';
 import '../../data/parsers/huawei_archive_parser.dart';
 import '../../data/services/export_service.dart';
 import '../../data/services/sync_storage_service.dart';
@@ -137,7 +135,7 @@ class WorkoutProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Opens the system file picker to select a Huawei ZIP, TAR, TAR.GZ or JSON export/backup file
+  /// Opens the system file picker to select a Huawei Privacy Export ZIP file
   Future<bool> pickAndImportFile() async {
     try {
       _isLoading = true;
@@ -146,7 +144,7 @@ class WorkoutProvider extends ChangeNotifier {
 
       final result = await FilePicker.platform.pickFiles(
         type: FileType.custom,
-        allowedExtensions: ['zip', 'tar', 'gz', 'tgz', 'json', 'db', 'bak'],
+        allowedExtensions: ['zip'],
         allowMultiple: false,
       );
 
@@ -162,7 +160,7 @@ class WorkoutProvider extends ChangeNotifier {
       final parsed = await HuaweiArchiveParser.parseFile(filePath);
       
       if (parsed.isEmpty) {
-        _errorMessage = 'No workout records found in "${result.files.first.name}". Make sure the backup/ZIP contains motion path JSON or health records.';
+        _errorMessage = 'No workout records found in "${result.files.first.name}". Make sure this is the Huawei Privacy Center export ZIP.';
       } else {
         _activities = parsed;
         _selectedIds.clear();
@@ -173,7 +171,7 @@ class WorkoutProvider extends ChangeNotifier {
       return parsed.isNotEmpty;
     } catch (e) {
       _isLoading = false;
-      _errorMessage = 'Error reading file: ${e.toString()}';
+      _errorMessage = 'Error reading ZIP archive: ${e.toString()}';
       notifyListeners();
       return false;
     }
@@ -203,11 +201,22 @@ class WorkoutProvider extends ChangeNotifier {
 
     for (int i = 0; i < toSync.length; i++) {
       final activity = toSync[i];
+      final isModifiedWorkout = isActivityModified(activity);
+      final existingRecord = _syncStorage.getRecord(activity.permanentId);
+
       _syncProgressValue = (i + 1) / toSync.length;
-      _syncProgressMessage = 'Uploading ${i + 1}/${toSync.length}: ${activity.title}';
+      _syncProgressMessage = isModifiedWorkout
+          ? 'Updating ${i + 1}/${toSync.length}: ${activity.title} (calibrated/edited)'
+          : 'Uploading ${i + 1}/${toSync.length}: ${activity.title}';
       notifyListeners();
 
       try {
+        // If modified workout was previously on Strava, remove old version so Strava accepts update
+        if (isModifiedWorkout && existingRecord?.stravaActivityId != null) {
+          await _stravaService.deleteActivity(existingRecord!.stravaActivityId!);
+          await Future.delayed(const Duration(milliseconds: 500));
+        }
+
         final result = await _stravaService.uploadActivity(activity);
 
         if (result.success) {
@@ -264,115 +273,6 @@ class WorkoutProvider extends ChangeNotifier {
       return false;
     }
     return true;
-  }
-
-  /// Loads mock demo dataset for testing UI without needing a real device file
-  void loadSampleData() {
-    final now = DateTime.now();
-    _activities = [
-      WorkoutActivity(
-        id: 'huawei_${now.subtract(const Duration(days: 1, hours: 2)).millisecondsSinceEpoch}',
-        title: 'Outdoor Run - Morning Intervals',
-        sportType: ActivityType.outdoorRunning,
-        startTime: now.subtract(const Duration(days: 1, hours: 2)),
-        endTime: now.subtract(const Duration(days: 1, hours: 1, minutes: 20)),
-        totalDurationSeconds: 2400,
-        totalDistanceMeters: 7500.0,
-        totalCalories: 520,
-        avgHeartRate: 156,
-        maxHeartRate: 178,
-        totalAscentMeters: 65.0,
-        totalDescentMeters: 60.0,
-        trackPoints: _generateSampleRoute(
-          startLat: 37.7749,
-          startLon: -122.4194,
-          count: 40,
-          startTime: now.subtract(const Duration(days: 1, hours: 2)),
-        ),
-      ),
-      WorkoutActivity(
-        id: 'huawei_${now.subtract(const Duration(days: 3, hours: 4)).millisecondsSinceEpoch}',
-        title: 'Outdoor Cycling - Weekend Loop',
-        sportType: ActivityType.outdoorCycling,
-        startTime: now.subtract(const Duration(days: 3, hours: 4)),
-        endTime: now.subtract(const Duration(days: 3, hours: 2)),
-        totalDurationSeconds: 7200,
-        totalDistanceMeters: 38200.0,
-        totalCalories: 1150,
-        avgHeartRate: 142,
-        maxHeartRate: 168,
-        totalAscentMeters: 320.0,
-        totalDescentMeters: 315.0,
-        trackPoints: _generateSampleRoute(
-          startLat: 37.7833,
-          startLon: -122.4167,
-          count: 60,
-          startTime: now.subtract(const Duration(days: 3, hours: 4)),
-        ),
-      ),
-      WorkoutActivity(
-        id: 'huawei_${now.subtract(const Duration(days: 4, hours: 1)).millisecondsSinceEpoch}',
-        title: 'Walking - Evening Walk',
-        sportType: ActivityType.walking,
-        startTime: now.subtract(const Duration(days: 4, hours: 1)),
-        endTime: now.subtract(const Duration(days: 4)),
-        totalDurationSeconds: 3600,
-        totalDistanceMeters: 4800.0,
-        totalCalories: 230,
-        avgHeartRate: 108,
-        maxHeartRate: 125,
-        totalAscentMeters: 25.0,
-        totalDescentMeters: 20.0,
-        trackPoints: _generateSampleRoute(
-          startLat: 37.7690,
-          startLon: -122.4467,
-          count: 30,
-          startTime: now.subtract(const Duration(days: 4, hours: 1)),
-        ),
-      ),
-    ];
-    _selectedIds.clear();
-    _errorMessage = null;
-    _lastLoadedFileName = 'Sample Huawei Demo Data';
-    notifyListeners();
-  }
-
-  static List<TrackPoint> _generateSampleRoute({
-    required double startLat,
-    required double startLon,
-    required int count,
-    required DateTime startTime,
-  }) {
-    final List<dynamic> pts = [];
-    double lat = startLat;
-    double lon = startLon;
-    double alt = 50.0;
-
-    for (int i = 0; i < count; i++) {
-      lat += (i % 2 == 0 ? 0.0012 : -0.0004);
-      lon += (i % 3 == 0 ? 0.0015 : 0.0008);
-      alt += (i % 5 == 0 ? 2.5 : -1.0);
-      final t = startTime.add(Duration(seconds: i * 60));
-      pts.add({
-        'lat': lat,
-        'lon': lon,
-        'alt': alt,
-        't': t.millisecondsSinceEpoch,
-        'hr': 140 + (i % 25),
-        'cadence': 160 + (i % 15),
-      });
-    }
-
-    return MotionPathParser.parseJsonContent([
-      {
-        'sportType': 283,
-        'startTime': startTime.millisecondsSinceEpoch,
-        'endTime': startTime.add(Duration(seconds: count * 60)).millisecondsSinceEpoch,
-        'pointList': pts,
-        'totalDistance': 5000.0,
-        'totalCalories': 300,
-      }
-    ]).first.trackPoints;
   }
 
   Future<void> exportSingle(WorkoutActivity activity, ExportFormat format) async {

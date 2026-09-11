@@ -7,9 +7,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Huawei Exporter'), findsOneWidget);
-    expect(find.text('Import Huawei Workout Data'), findsOneWidget);
-    expect(find.text('Select Backup / ZIP / JSON File'), findsOneWidget);
-    expect(find.text('How to create Instant Local Backup (30s)'), findsOneWidget);
-    expect(find.text('Try with Demo Workouts'), findsOneWidget);
+    expect(find.text('Import Huawei Data'), findsOneWidget);
+    expect(find.text('Select Huawei Data ZIP'), findsOneWidget);
   });
 }

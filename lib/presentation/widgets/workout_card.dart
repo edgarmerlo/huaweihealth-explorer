@@ -31,13 +31,13 @@ class WorkoutCard extends StatelessWidget {
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(16),
         side: BorderSide(
-          color: isSelected ? theme.colorScheme.primary : theme.colorScheme.outlineVariant.withValues(alpha: 0.5),
+          color: isSelected ? const Color(0xFF00E5BE) : const Color(0xFF30363D),
           width: isSelected ? 2 : 1,
         ),
       ),
       color: isSelected 
-          ? theme.colorScheme.primaryContainer.withValues(alpha: 0.3)
-          : theme.colorScheme.surface,
+          ? const Color(0xFF00E5BE).withValues(alpha: 0.08)
+          : const Color(0xFF161B22),
       child: InkWell(
         onTap: onTap,
         borderRadius: BorderRadius.circular(16),
@@ -60,8 +60,10 @@ class WorkoutCard extends StatelessWidget {
                             Expanded(
                               child: Text(
                                 activity.title,
-                                style: theme.textTheme.titleMedium?.copyWith(
+                                style: const TextStyle(
                                   fontWeight: FontWeight.bold,
+                                  fontSize: 15,
+                                  color: Color(0xFFF0F6FC),
                                 ),
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
@@ -74,8 +76,9 @@ class WorkoutCard extends StatelessWidget {
                         const SizedBox(height: 2),
                         Text(
                           dateFormatted,
-                          style: theme.textTheme.bodySmall?.copyWith(
-                            color: theme.colorScheme.onSurfaceVariant,
+                          style: const TextStyle(
+                            fontSize: 12,
+                            color: Color(0xFF8B949E),
                           ),
                         ),
                       ],
@@ -84,6 +87,9 @@ class WorkoutCard extends StatelessWidget {
                   Checkbox(
                     value: isSelected,
                     onChanged: onSelectChanged,
+                    activeColor: const Color(0xFF00E5BE),
+                    checkColor: const Color(0xFF0B0E14),
+                    side: const BorderSide(color: Color(0xFF8B949E), width: 1.5),
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
                   ),
                 ],
@@ -120,7 +126,7 @@ class WorkoutCard extends StatelessWidget {
                       label: 'Avg HR',
                       value: '${activity.avgHeartRate} bpm',
                       icon: Icons.favorite_rounded,
-                      iconColor: Colors.redAccent,
+                      iconColor: const Color(0xFFFC4C02),
                     ),
                 ],
               ),
@@ -140,42 +146,44 @@ class WorkoutCard extends StatelessWidget {
     switch (status) {
       case SyncStatus.synced:
       case SyncStatus.duplicate:
-        bg = const Color(0xFFFC4C02).withValues(alpha: 0.15);
+        bg = const Color(0xFFFC4C02).withValues(alpha: 0.18);
         fg = const Color(0xFFFC4C02);
         icon = Icons.check_circle_rounded;
         text = 'Strava';
         break;
       case SyncStatus.modified:
-        bg = Colors.amber.withValues(alpha: 0.2);
-        fg = Colors.orange.shade800;
+        bg = const Color(0xFFFFB300).withValues(alpha: 0.2);
+        fg = const Color(0xFFFFB300);
         icon = Icons.edit_note_rounded;
         text = 'Modified';
         break;
       case SyncStatus.unsynced:
-        bg = Colors.green.withValues(alpha: 0.15);
-        fg = Colors.green.shade800;
+        bg = const Color(0xFF00E5BE).withValues(alpha: 0.18);
+        fg = const Color(0xFF00E5BE);
         icon = Icons.fiber_new_rounded;
         text = 'New';
         break;
     }
 
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2.5),
       decoration: BoxDecoration(
         color: bg,
         borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: fg.withValues(alpha: 0.3), width: 1),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
           Icon(icon, size: 12, color: fg),
-          const SizedBox(width: 3),
+          const SizedBox(width: 3.5),
           Text(
             text,
             style: TextStyle(
               color: fg,
               fontSize: 10.5,
               fontWeight: FontWeight.bold,
+              letterSpacing: 0.2,
             ),
           ),
         ],

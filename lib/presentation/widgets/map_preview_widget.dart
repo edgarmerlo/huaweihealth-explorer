@@ -64,7 +64,9 @@ class MapPreviewWidget extends StatelessWidget {
                 Polyline(
                   points: points,
                   strokeWidth: 4.5,
-                  color: Colors.deepOrangeAccent,
+                  color: const Color(0xFF00E5BE),
+                  borderColor: const Color(0xFF0B0E14),
+                  borderStrokeWidth: 1.5,
                 ),
               ],
             ),
@@ -77,11 +79,11 @@ class MapPreviewWidget extends StatelessWidget {
                   height: 32,
                   child: Container(
                     decoration: const BoxDecoration(
-                      color: Colors.green,
+                      color: Color(0xFF00E5BE),
                       shape: BoxShape.circle,
-                      boxShadow: [BoxShadow(color: Colors.black26, blurRadius: 4)],
+                      boxShadow: [BoxShadow(color: Colors.black45, blurRadius: 6)],
                     ),
-                    child: const Icon(Icons.play_arrow_rounded, color: Colors.white, size: 20),
+                    child: const Icon(Icons.play_arrow_rounded, color: Color(0xFF0B0E14), size: 20),
                   ),
                 ),
                 // End Marker
@@ -91,9 +93,9 @@ class MapPreviewWidget extends StatelessWidget {
                   height: 32,
                   child: Container(
                     decoration: const BoxDecoration(
-                      color: Colors.redAccent,
+                      color: Color(0xFFFC4C02),
                       shape: BoxShape.circle,
-                      boxShadow: [BoxShadow(color: Colors.black26, blurRadius: 4)],
+                      boxShadow: [BoxShadow(color: Colors.black45, blurRadius: 6)],
                     ),
                     child: const Icon(Icons.flag_rounded, color: Colors.white, size: 18),
                   ),

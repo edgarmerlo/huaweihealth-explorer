@@ -92,12 +92,12 @@ class _TelemetryChartWidgetState extends State<TelemetryChartWidget> {
           LineChartBarData(
             spots: spots,
             isCurved: true,
-            color: Colors.blueAccent,
+            color: const Color(0xFF00E5BE),
             barWidth: 2.5,
             dotData: const FlDotData(show: false),
             belowBarData: BarAreaData(
               show: true,
-              color: Colors.blueAccent.withValues(alpha: 0.15),
+              color: const Color(0xFF00E5BE).withValues(alpha: 0.15),
             ),
           ),
         ],
@@ -139,12 +139,12 @@ class _TelemetryChartWidgetState extends State<TelemetryChartWidget> {
           LineChartBarData(
             spots: spots,
             isCurved: true,
-            color: Colors.redAccent,
+            color: const Color(0xFFFC4C02),
             barWidth: 2.5,
             dotData: const FlDotData(show: false),
             belowBarData: BarAreaData(
               show: true,
-              color: Colors.redAccent.withValues(alpha: 0.15),
+              color: const Color(0xFFFC4C02).withValues(alpha: 0.15),
             ),
           ),
         ],

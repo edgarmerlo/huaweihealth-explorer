@@ -222,20 +222,20 @@ class _ActivityDetailScreenState extends State<ActivityDetailScreen> {
     switch (status) {
       case SyncStatus.synced:
       case SyncStatus.duplicate:
-        bg = const Color(0xFFFC4C02).withValues(alpha: 0.15);
+        bg = const Color(0xFFFC4C02).withValues(alpha: 0.18);
         fg = const Color(0xFFFC4C02);
         icon = Icons.check_circle_rounded;
         text = 'Synced to Strava';
         break;
       case SyncStatus.modified:
-        bg = Colors.amber.withValues(alpha: 0.2);
-        fg = Colors.orange.shade800;
+        bg = const Color(0xFFFFB300).withValues(alpha: 0.2);
+        fg = const Color(0xFFFFB300);
         icon = Icons.edit_note_rounded;
         text = 'Data Modified';
         break;
       case SyncStatus.unsynced:
-        bg = Colors.green.withValues(alpha: 0.15);
-        fg = Colors.green.shade800;
+        bg = const Color(0xFF00E5BE).withValues(alpha: 0.18);
+        fg = const Color(0xFF00E5BE);
         icon = Icons.fiber_new_rounded;
         text = 'Ready to Sync';
         break;
@@ -246,6 +246,7 @@ class _ActivityDetailScreenState extends State<ActivityDetailScreen> {
       decoration: BoxDecoration(
         color: bg,
         borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: fg.withValues(alpha: 0.3)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,

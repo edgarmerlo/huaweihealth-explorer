@@ -358,6 +358,21 @@ class StravaService {
     }
   }
 
+  /// Deletes an activity on Strava (used to cleanly replace calibrated/modified workouts)
+  Future<bool> deleteActivity(int stravaActivityId) async {
+    try {
+      final token = await getValidAccessToken();
+      final res = await http.delete(
+        Uri.parse('https://www.strava.com/api/v3/activities/$stravaActivityId'),
+        headers: {'Authorization': 'Bearer $token'},
+      );
+      return res.statusCode == 200 || res.statusCode == 204;
+    } catch (e) {
+      debugPrint('Error deleting activity on Strava: $e');
+      return false;
+    }
+  }
+
   /// Updates existing activity title/description on Strava for modified records
   Future<bool> updateActivityMetadata(
     int stravaActivityId, {
