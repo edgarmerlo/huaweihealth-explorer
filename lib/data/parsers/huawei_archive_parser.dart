@@ -18,19 +18,26 @@ class HuaweiArchiveParser {
 
     final entities = dir.listSync(recursive: true);
     final jsonFiles = entities.whereType<File>().where((f) {
+      final path = f.path.toLowerCase();
       final name = f.uri.pathSegments.last.toLowerCase();
+
+      // Exclude background health biometrics, sleep logs, and sample sequence files
+      if (path.contains('health detail') || name.startsWith('health detail') ||
+          path.contains('sample sequence') || name.startsWith('sample sequence')) {
+        return false;
+      }
+
       return name.endsWith('.json') && (
+        path.contains('motion path') ||
+        path.contains('motion_path') ||
         name.contains('motion path') ||
         name.contains('motion_path') ||
         name.contains('sport_data') ||
-        name.contains('track') ||
-        name.contains('detail')
+        name.contains('track')
       );
     }).toList();
 
-    final targets = jsonFiles.isNotEmpty 
-        ? jsonFiles 
-        : entities.whereType<File>().where((f) => f.path.toLowerCase().endsWith('.json')).toList();
+    final targets = jsonFiles;
 
     for (int i = 0; i < targets.length; i++) {
       final file = targets[i];
@@ -157,12 +164,19 @@ class HuaweiArchiveParser {
         } catch (_) {}
       }
 
+      // Skip background health biometrics, sleep logs, and sample sequence files
+      if (name.contains('health detail') || name.startsWith('health detail') ||
+          name.contains('sample sequence') || name.startsWith('sample sequence')) {
+        continue;
+      }
+
       // Check for motion path JSON files or files containing motion / health workout data
-      final isMotionFile = name.endsWith('.json') || 
+      final isMotionFile = name.endsWith('.json') && (
+                           name.contains('motion path') || 
                            name.contains('motion_path') || 
                            name.contains('motionpath') || 
                            name.contains('sport_data') ||
-                           name.contains('track');
+                           name.contains('track'));
 
       if (isMotionFile) {
         try {

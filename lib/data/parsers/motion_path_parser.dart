@@ -63,6 +63,15 @@ class MotionPathParser {
 
   static WorkoutActivity? _parseSingleActivity(Map<String, dynamic> map, {required int index, String? sourceFileName}) {
     try {
+      // Ignore background biometric / health data records (e.g. sleep type 9, daily goal type 300002)
+      if (map.containsKey('samplePoints') || map.containsKey('healthDataSource')) {
+        return null;
+      }
+      final rawType = map['type'];
+      if (rawType is int && (rawType >= 100000 || rawType == 9 || rawType == 7)) {
+        return null;
+      }
+
       // 1. Extract HW_EXT_TRACK_SIMPLIFY if present in attribute
       Map<String, dynamic>? simplifyMap;
       final rawAttribute = map['attribute'];
