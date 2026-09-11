@@ -67,10 +67,18 @@ class HomeScreen extends StatelessWidget {
                       fontSize: 14,
                     ),
                   ),
-                  const SizedBox(height: 6),
-                  const Text(
-                    'Huawei sends this password to your email address or SMS upon generating your data export.',
-                    style: TextStyle(color: Color(0xFF8B949E), fontSize: 13, height: 1.35),
+                  const SizedBox(height: 8),
+                  Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF0B0E14),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: const Color(0xFF30363D)),
+                    ),
+                    child: const Text(
+                      'This is NOT your Huawei ID password. It is the separate, one-time security code you created and confirmed in the final step when requesting your data from Huawei.',
+                      style: TextStyle(color: Color(0xFF00E5BE), fontSize: 12.5, height: 1.35),
+                    ),
                   ),
                   if (isRetry) ...[
                     const SizedBox(height: 12),
@@ -167,6 +175,242 @@ class HomeScreen extends StatelessWidget {
     );
   }
 
+  void _showHowToRequestGuide(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: const Color(0xFF161B22),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (ctx) => DraggableScrollableSheet(
+        initialChildSize: 0.88,
+        minChildSize: 0.5,
+        maxChildSize: 0.95,
+        expand: false,
+        builder: (_, scrollController) => SingleChildScrollView(
+          controller: scrollController,
+          padding: const EdgeInsets.fromLTRB(24, 16, 24, 32),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Drag Handle
+              Center(
+                child: Container(
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF30363D),
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 20),
+
+              // Title
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFFC4C02).withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: const Icon(Icons.menu_book_rounded, color: Color(0xFFFC4C02), size: 24),
+                  ),
+                  const SizedBox(width: 12),
+                  const Expanded(
+                    child: Text(
+                      'How to Request Huawei ZIP',
+                      style: TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                        color: Color(0xFFF0F6FC),
+                        letterSpacing: -0.5,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+
+              // Crucial Notice regarding Password
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF0B0E14),
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: const Color(0xFFFC4C02).withValues(alpha: 0.4)),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Row(
+                      children: [
+                        Icon(Icons.warning_amber_rounded, color: Color(0xFFFC4C02), size: 20),
+                        SizedBox(width: 8),
+                        Text(
+                          'Important: About the Password',
+                          style: TextStyle(
+                            color: Color(0xFFFC4C02),
+                            fontWeight: FontWeight.bold,
+                            fontSize: 14,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    RichText(
+                      text: const TextSpan(
+                        style: TextStyle(color: Color(0xFF8B949E), fontSize: 13, height: 1.45),
+                        children: [
+                          TextSpan(
+                            text: 'Not your Huawei ID password: ',
+                            style: TextStyle(color: Color(0xFFF0F6FC), fontWeight: FontWeight.bold),
+                          ),
+                          TextSpan(
+                            text: 'This extraction password is a separate, one-time security code you type and confirm during the final step of requesting your data export. Huawei does not store this password for security and privacy reasons. ',
+                          ),
+                          TextSpan(
+                            text: 'Make sure to remember or write down this password!',
+                            style: TextStyle(color: Color(0xFF00E5BE), fontWeight: FontWeight.bold),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 20),
+
+              const Text(
+                'Step-by-Step Instructions',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                  color: Color(0xFFF0F6FC),
+                ),
+              ),
+              const SizedBox(height: 14),
+
+              _buildGuideStep(
+                step: '1',
+                title: 'Open Huawei Health or Phone Settings',
+                description: 'Open the Huawei Health app on your phone, or go to your phone Settings > HUAWEI ID profile at the top.',
+              ),
+              _buildGuideStep(
+                step: '2',
+                title: 'Go to Privacy Center',
+                description: 'Navigate to Me > Privacy Center (or HUAWEI ID > Privacy Center).',
+              ),
+              _buildGuideStep(
+                step: '3',
+                title: 'Request Your Data',
+                description: 'Tap on "Request Your Data". Authenticate via SMS code, fingerprint, or password if prompted.',
+              ),
+              _buildGuideStep(
+                step: '4',
+                title: 'Select Health Data',
+                description: 'Select HUAWEI Health (Sports & Fitness records).',
+              ),
+              _buildGuideStep(
+                step: '5',
+                title: 'Set Your Extraction Password (CRITICAL)',
+                description: 'In the final step, Huawei prompts you to set and confirm a password to encrypt the ZIP. Remember this exact password.',
+                highlight: true,
+              ),
+              _buildGuideStep(
+                step: '6',
+                title: 'Submit and Wait for Download Email/SMS',
+                description: 'Tap Submit. Huawei prepares your archive within a few hours. You will receive an email and SMS with the download link.',
+              ),
+              _buildGuideStep(
+                step: '7',
+                title: 'Import into Huawei Exporter',
+                description: 'Download the ZIP to your phone, open this app, tap "Select Huawei Data ZIP", and enter the password you created in Step 5.',
+                isLast: true,
+              ),
+              const SizedBox(height: 20),
+
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton(
+                  style: FilledButton.styleFrom(
+                    backgroundColor: const Color(0xFFFC4C02),
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                  onPressed: () => Navigator.pop(ctx),
+                  child: const Text('Got It', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildGuideStep({
+    required String step,
+    required String title,
+    required String description,
+    bool highlight = false,
+    bool isLast = false,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 14),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 28,
+            height: 28,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: highlight ? const Color(0xFFFC4C02) : const Color(0xFF30363D),
+              shape: BoxShape.circle,
+            ),
+            child: Text(
+              step,
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
+                fontSize: 13,
+                color: highlight ? Colors.white : const Color(0xFFF0F6FC),
+              ),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 14,
+                    color: highlight ? const Color(0xFFFC4C02) : const Color(0xFFF0F6FC),
+                  ),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  description,
+                  style: const TextStyle(
+                    fontSize: 13,
+                    color: Color(0xFF8B949E),
+                    height: 1.35,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Future<void> _startStravaSync(BuildContext context, WorkoutProvider provider) async {
     if (!provider.isStravaConnected) {
       _showStravaDialog(context, provider);
@@ -243,6 +487,12 @@ class HomeScreen extends StatelessWidget {
           ],
         ),
         actions: [
+          // Guide / Help Action
+          IconButton(
+            tooltip: 'How to Request ZIP',
+            icon: const Icon(Icons.help_outline_rounded, color: Color(0xFF8B949E)),
+            onPressed: () => _showHowToRequestGuide(context),
+          ),
           // Select another ZIP if activities are already loaded
           if (provider.activities.isNotEmpty)
             IconButton(
@@ -379,13 +629,39 @@ class HomeScreen extends StatelessWidget {
             ),
             const SizedBox(height: 10),
             const Text(
-              'Select your Huawei Privacy Center ZIP export file to parse and sync past workouts.',
+              'This app works exclusively with the official Huawei Privacy Center export ZIP.',
               style: TextStyle(
                 fontSize: 14,
-                color: Color(0xFF8B949E),
-                height: 1.4,
+                color: Color(0xFF00E5BE),
+                fontWeight: FontWeight.w600,
               ),
               textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 14),
+            Container(
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: const Color(0xFF161B22),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: const Color(0xFF30363D)),
+              ),
+              child: const Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(Icons.info_outline_rounded, color: Color(0xFFFC4C02), size: 20),
+                  SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      'Huawei does not make it easy to export your raw fitness data—there is no direct cloud sync API or open local export. Requesting your official Privacy Center archive is the cleanest and most reliable way to recover your complete GPS routes, heart rate, and cadence without data loss.',
+                      style: TextStyle(
+                        fontSize: 12.5,
+                        color: Color(0xFF8B949E),
+                        height: 1.4,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
             if (provider.errorMessage != null) ...[
               const SizedBox(height: 18),
@@ -403,7 +679,7 @@ class HomeScreen extends StatelessWidget {
                 ),
               ),
             ],
-            const SizedBox(height: 32),
+            const SizedBox(height: 24),
             SizedBox(
               width: double.infinity,
               child: FilledButton.icon(
@@ -420,6 +696,24 @@ class HomeScreen extends StatelessWidget {
                   style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                 ),
                 onPressed: () => _importZip(context, provider),
+              ),
+            ),
+            const SizedBox(height: 12),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                style: OutlinedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+                  side: const BorderSide(color: Color(0xFF30363D)),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                  foregroundColor: const Color(0xFFF0F6FC),
+                ),
+                icon: const Icon(Icons.help_outline_rounded, size: 20, color: Color(0xFF00E5BE)),
+                label: const Text(
+                  'How to Request Your Huawei ZIP',
+                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+                ),
+                onPressed: () => _showHowToRequestGuide(context),
               ),
             ),
           ],
